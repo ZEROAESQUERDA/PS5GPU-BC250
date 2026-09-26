@@ -13,6 +13,8 @@ BIN_NOME="ps5gpu-gui"
 BIN_ORIGEM="$DIR_ATUAL/$BIN_NOME"
 BIN_DESTINO="/usr/bin/$BIN_NOME"
 WRAPPER="/usr/local/bin/ps5gpu-gui-autostart"
+PROC_NOME="$(basename "$BIN_NOME")"
+
 
 # ---------------------------------------------------------------------------
 # Descobrir o usuário logado.
@@ -49,6 +51,34 @@ if [ ! -f "$BIN_ORIGEM" ]; then
 fi
 
 # 2. Copia para o sistema e dá permissão
+# ---------------------------------------------------------------------------
+# Se o programa estiver rodando, o destino fica "ocupado" e o cp falha com
+# "Text file busy" (em pt-BR: "Área de texto ocupada"). Numa reinstalação isso
+# sempre acontece, porque o autostart deixou o programa aberto. Então paramos
+# antes de copiar e religamos no final (com o wrapper, que já tem o log).
+# ---------------------------------------------------------------------------
+RODAVA=0
+if pgrep -x "$PROC_NOME" > /dev/null 2>&1; then
+    RODAVA=1
+    echo "ℹ️  O programa está em execução; será reiniciado para atualizar."
+    pkill -x "$PROC_NOME" 2> /dev/null || true
+    for _ in $(seq 1 20); do
+        pgrep -x "$PROC_NOME" > /dev/null 2>&1 || break
+        sleep 0.5
+    done
+    if pgrep -x "$PROC_NOME" > /dev/null 2>&1; then
+        echo "   não encerrou no pedido normal; forçando…"
+        pkill -9 -x "$PROC_NOME" 2> /dev/null || true
+        sleep 1
+    fi
+    if pgrep -x "$PROC_NOME" > /dev/null 2>&1; then
+        echo "❌ Erro: não consegui encerrar '$PROC_NOME'."
+        echo "   Feche o programa (sudo pkill -9 -x $PROC_NOME) e tente de novo."
+        exit 1
+    fi
+    echo "✅ Programa anterior encerrado"
+fi
+
 sudo cp "$BIN_ORIGEM" "$BIN_DESTINO"
 sudo chmod +x "$BIN_DESTINO"
 echo "✅ Binário copiado para $BIN_DESTINO"
@@ -104,6 +134,41 @@ sudo rm -f /root/.config/autostart/ps5gpu.desktop /root/.config/autostart/ps5gpu
 if [ -f /usr/local/bin/$BIN_NOME ]; then
     sudo rm -f "/usr/local/bin/$BIN_NOME"
     echo "✅ Removida cópia antiga em /usr/local/bin"
+fi
+
+# Religa o programa, se ele estava rodando antes da instalação.
+# Só tentou se houver sessão gráfica alcançável: sem DISPLAY/WAYLAND/DBus o Qt
+# aborta ao tentar abrir a janela, e um crash durante a instalação é pior do
+# que o programa ficar fechado (o autostart abre no próximo login de qualquer
+# forma).
+if [ "$RODAVA" = 1 ]; then
+    TEM_SESSAO=0
+    if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/nao-existe}/$WAYLAND_DISPLAY" ]; then
+        TEM_SESSAO=1
+    elif [ -z "${WAYLAND_DISPLAY:-}" ] && [ -n "${DISPLAY:-}" ]; then
+        TEM_SESSAO=1
+    fi
+
+    if [ "$TEM_SESSAO" = 1 ]; then
+        setsid env \
+            HOME="$USER_HOME" \
+            DISPLAY="${DISPLAY:-}" \
+            WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
+            XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}" \
+            XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-}" \
+            XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-}" \
+            DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-}" \
+            "$WRAPPER" > /dev/null 2>&1 &
+        sleep 3
+        if pgrep -x "$PROC_NOME" > /dev/null 2>&1; then
+            echo "✅ Programa reiniciado com a versão nova"
+        else
+            echo "⚠️  Não reiniciou sozinho. Abra com: sudo $BIN_DESTINO"
+        fi
+    else
+        echo "ℹ️  Sem sessão gráfica neste terminal; o programa não foi reaberto."
+        echo "   Abra com: sudo $BIN_DESTINO   (ou aguarde o próximo login)"
+    fi
 fi
 
 echo "-------------------------------------------"
