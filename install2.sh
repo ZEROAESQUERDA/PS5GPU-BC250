@@ -117,6 +117,39 @@ Categories=Settings;HardwareSettings;
 EOF
 echo "✅ Autostart criado em $AUTOSTART_DIR/ps5gpu.desktop"
 
+# ---------------------------------------------------------------------------
+# Remove atalhos e launchers do PROJETO ANTIGO.
+#
+# Eles abriam uma janela de terminal (konsole) com o debug do programa e sem
+# root -- logo, sem controle de CPU. Pior: essa instancia sem root ficava com
+# o socket de instancia unica e a instancia COM root do autostart saia em
+# silencio, entao o usuario via a janela, mas os controles de CPU cinza.
+# ---------------------------------------------------------------------------
+for _antigo in \
+    "$USER_HOME/.local/share/applications/ps5gpu-gui.desktop" \
+    "$USER_HOME/.local/share/applications/ps5gpudriver-gui.desktop" \
+    "/usr/share/applications/ps5gpu-gui.desktop" \
+    "/usr/share/applications/ps5gpudriver-gui.desktop" \
+    "/usr/bin/ps5gpu-gui-launcher" \
+    "/usr/local/bin/ps5gpu-gui-launcher" \
+    "/usr/bin/ps5gpudriver-gui"; do
+    if [ -e "$_antigo" ]; then
+        rm -f "$_antigo"
+        echo "✅ Removido resquício antigo: $_antigo"
+    fi
+done
+
+sudo tee "/usr/share/applications/ps5gpu-gui.desktop" > /dev/null <<EOF
+[Desktop Entry]
+Type=Application
+Name=PS5GPU
+Comment=Controle de GPU e CPU (Zen 2 Booster) para AMD BC-250
+Exec=pkexec $BIN_DESTINO
+Icon=ps5gpu-gui
+Terminal=false
+Categories=Utility;System;
+EOF
+
 # 7. Limpa instalações antigas no lugar errado
 sudo rm -f /root/.config/autostart/ps5gpu.desktop /root/.config/autostart/ps5gpu-gui.desktop 2>/dev/null || true
 if [ -f /usr/bin/$BIN_NOME ]; then
