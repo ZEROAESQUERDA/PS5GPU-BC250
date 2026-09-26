@@ -139,12 +139,18 @@ for _antigo in \
     fi
 done
 
+# O atalho de menu usa o MESMO wrapper do autostart, de propósito:
+# o wrapper é o alvo literal da regra NOPASSWD do sudoers, então o programa
+# sobe com root sem pedir senha. Antes era `Exec=pkexec /usr/bin/ps5gpu-gui`,
+# e o pkexec pede senha sempre — a regra do sudoers não se aplica a ele, são
+# dois mecanismos de autorização diferentes. Era por isso que o autostart
+# abria sem senha e o atalho pedia.
 sudo tee "/usr/share/applications/ps5gpu-gui.desktop" > /dev/null <<EOF
 [Desktop Entry]
 Type=Application
 Name=PS5GPU
 Comment=Controle de GPU e CPU (Zen 2 Booster) para AMD BC-250
-Exec=pkexec $BIN_DESTINO
+Exec=sudo $WRAPPER
 Icon=ps5gpu-gui
 Terminal=false
 Categories=Utility;System;
